@@ -1,6 +1,8 @@
 USERS_NUMBER = 943
 ITENS_NUMBER = 1682
 
+MIN_ITENS_RATED = 10
+
 file_dir = "ml-100k/u.data"
 
 function rates_matrix(file_content, users_number, itens_number)
@@ -23,12 +25,34 @@ function cosine_similarity(vector_a, vector_b)
   return similarity
 end
 
+function global_mean(vector_a)
+  mean_value = sum(vector_a)/length(find(x->(x > 0), vector_a))
+
+  return mean_value
+end
+
+function min_items_number(min_number, vector_a, vector_b)
+  vector_aux = vector_a .* vector_b
+
+  number_items = length(find(x->(x > 0), vector_aux))
+
+  if number_items >= min_number
+    return true
+  end
+
+  return false
+end
+
 function similarity_table(rates_table, similarity_func, users_number)
   table = eye(users_number, users_number)
 
   for i in 1:users_number
     for j in i+1:users_number
-      table[j, i] = similarity_func(rates_table[i, :], rates_table[j, :])
+      if min_items_number(MIN_ITENS_RATED, rates_table[i, :], rates_table[j, :])
+        table[j, i] = 0
+      else
+        table[j, i] = similarity_func(rates_table[i, :], rates_table[j, :])
+      end
     end
   end
 
