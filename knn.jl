@@ -28,7 +28,17 @@ end
 function global_mean(vector_a)
   mean_value = sum(vector_a)/length(find(x->(x > 0), vector_a))
 
-  return mean_value
+  return round(mean_value)
+end
+
+function item_global_means(rates)
+  items_means = []
+
+  for i in 1:ITENS_NUMBER
+    push!(items_means, global_mean(rates[:, i]))
+  end
+
+  return items_means
 end
 
 function min_items_number(min_number, vector_a, vector_b)
@@ -56,7 +66,63 @@ function similarity_table(rates_table, similarity_func, users_number)
     end
   end
 
+  table = table + table'
+
   return table
+end
+
+function knn(K, vector)
+  top = []
+
+  vector_aux = copy(vector)
+
+  for i in 1:K
+    index_change = find(r->r==maximum(vector_aux), vector_aux)
+    vector_aux[index_change] = 0
+    push!(top, index_change)
+  end
+
+  return top
+end
+
+function item_rated(user, similar_user, item, rates)
+  if rates[user, item] > 0
+    if rates[similar_user, item] > 0
+      return true
+    end
+  end
+
+  return false
+end
+
+function user_based_prediction(K, rates, similarity, user, item, items_global_means)
+  most_similar_list = knn(K+1, similarity(:, user))[2:end]
+
+  rate = 0
+
+  num = 0
+  dem = 0
+
+  max_neighbours = round(K/2, RoundUp)
+
+  for i in 1:length(most_similar_list)
+    if max_neighbours > 0
+      if item_rated(user, i, item, rates)
+        num += similarity[user, i] * rates[i, item]
+        den += similarity[user, i]
+
+        max_neighbours -= 1
+      end
+    end
+  end
+
+  if max_neighbours > 0
+    rates = items_global_means[item]
+  else
+    rates = num/dem
+  end
+
+  return rates
 end
 
 f = open(file_dir)
@@ -65,10 +131,18 @@ file_content = readdlm(f)
 
 close(f)
 
+# training = find(r->r, shuffle(1:100000) .> 20000)
+# test = setdiff(1:100000, training)
+# matrix_training = file_content[training, :]
+# matrix_test = file_content[test, :]
+
 #file_content = sortrows(file_content, by=x->(x[1],x[2]))
+
 users_rates = rates_matrix(file_content, USERS_NUMBER, ITENS_NUMBER)
 similarity = similarity_table(users_rates, cosine_similarity, USERS_NUMBER)
+items_global_mean = item_global_means(users_rates)
 
-writedlm("similarity.data", similarity)
+#writedlm("similarity.data", similarity)
+println(items_global_mean)
 println(length(similarity))
 println(whos())
