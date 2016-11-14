@@ -74,13 +74,17 @@ end
 function knn(K, vector)
   top = []
 
-  vector_aux = copy(vector)
+  println("-----KNN COPY-----")
+  @time vector_aux = copy(vector)
+  println("-----KNN COPY-----")
 
   for i in 1:K
     index_change = find(r->r==maximum(vector_aux), vector_aux)
     vector_aux[index_change] = 0
     push!(top, index_change)
   end
+
+  println(top)
 
   return top
 end
@@ -96,33 +100,82 @@ function item_rated(user, similar_user, item, rates)
 end
 
 function user_based_prediction(K, rates, similarity, user, item, items_global_means)
-  most_similar_list = knn(K+1, similarity(:, user))[2:end]
+  most_similar_list = knn(K+1, similarity[:, user])[2:end]
 
   rate = 0
 
   num = 0
-  dem = 0
+  den = 0
+
+  println("\n\n")
+  println("-----START PREDICTION-----")
 
   max_neighbours = round(K/2, RoundUp)
 
-  for i in 1:length(most_similar_list)
+  println("Max Neighbours $(max_neighbours)")
+
+  for i in most_similar_list
     if max_neighbours > 0
-      if item_rated(user, i, item, rates)
-        num += similarity[user, i] * rates[i, item]
-        den += similarity[user, i]
+      if item_rated(user, i[1], item, rates)
+
+        println()
+        println("\[$(i[1])\] => Similarity: $(similarity[user, i[1]])")
+        println("\[$(i[1])\] => Item Rate: $(rates[i[1], item])")
+
+        num += similarity[user, i[1]] * rates[i[1], item]
+        den += similarity[user, i[1]]
 
         max_neighbours -= 1
+
+        println()
+        println("Current Numerator $(num)")
+        println("Current Denominator $(den)")
+        println("Current Neighbours $(max_neighbours)")
       end
     end
   end
 
+  println()
+
   if max_neighbours > 0
     rates = items_global_means[item]
+    println("Global Mean")
   else
     rates = num/dem
+    println("Prediction")
   end
 
+  println("Item Global Mean $(items_global_means[item])")
+  println("Rate Predicted $(num/den)")
+
+  println("-----END PREDICTION-----")
+  println("\n\n")
+
   return rates
+end
+
+function predict_test(rates_base, rates_test, test)
+  (rows, columns) = size(rates_test)
+
+  for i in test
+    user_row = round(i/rows, RoundDown) + 1
+    user_column = round(i/columns, RoundDown) + 1
+  end
+end
+
+function set_training(users_rates)
+  rates = find(r->r!=0, users_rates)
+
+  training_rates = copy(users_rates)
+
+  training = find(r->r, shuffle(1:length(rates)) .> (length(rates) * 0.2))
+  test = setdiff(1:length(rates), training)
+
+  for i in test
+    training_rates[rates[i]] = 0
+  end
+
+  return training, test, training_rates
 end
 
 f = open(file_dir)
@@ -131,18 +184,23 @@ file_content = readdlm(f)
 
 close(f)
 
-# training = find(r->r, shuffle(1:100000) .> 20000)
-# test = setdiff(1:100000, training)
 # matrix_training = file_content[training, :]
 # matrix_test = file_content[test, :]
 
 #file_content = sortrows(file_content, by=x->(x[1],x[2]))
 
-users_rates = rates_matrix(file_content, USERS_NUMBER, ITENS_NUMBER)
-similarity = similarity_table(users_rates, cosine_similarity, USERS_NUMBER)
-items_global_mean = item_global_means(users_rates)
+#users_rates_training = file_content[training, :]
 
+# println(size(file_content))
+# println(size(users_rates_training))
+@time users_rates = rates_matrix(file_content, USERS_NUMBER, ITENS_NUMBER)
+@time (training, test, users_rates_training) = set_training(users_rates)
+
+@time similarity = similarity_table(users_rates_training, cosine_similarity, USERS_NUMBER)
+@time items_global_mean = item_global_means(users_rates_training)
+
+@time user_based_prediction(10, users_rates_training, similarity, 1, 251, items_global_mean)
 #writedlm("similarity.data", similarity)
-println(items_global_mean)
-println(length(similarity))
-println(whos())
+#println(items_global_mean)
+#println(length(similarity))
+#println(whos())
