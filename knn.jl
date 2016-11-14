@@ -108,30 +108,18 @@ function user_based_prediction(K, rates, similarity, user, item, items_global_me
   num = 0
   den = 0
 
-  # println("\n\n")
-  # println("-----START PREDICTION-----")
 
   max_neighbours = 3
-
-  # println("Max Neighbours $(max_neighbours)")
 
   for i in most_similar_list
     if max_neighbours > 0
       if item_rated(user, i[1], item, rates)
 
-        # println()
-        # println("\[$(i[1])\] => Similarity: $(similarity[user, i[1]])")
-        # println("\[$(i[1])\] => Item Rate: $(rates[i[1], item])")
-
         num += similarity[user, i[1]] * rates[i[1], item]
         den += similarity[user, i[1]]
 
         max_neighbours -= 1
-        #
-        # println()
-        # println("Current Numerator $(num)")
-        # println("Current Denominator $(den)")
-        # println("Current Neighbours $(max_neighbours)")
+
       end
     end
   end
@@ -151,12 +139,6 @@ function user_based_prediction(K, rates, similarity, user, item, items_global_me
       global predict_zero += 1
     end
   end
-
-  # println("Item Global Mean $(items_global_means[item])")
-  # println("Rate Predicted $(num/den)")
-  #
-  # println("-----END PREDICTION-----")
-  # println("\n\n")
 
   return rates
 end
@@ -198,6 +180,29 @@ function set_training(users_rates)
   return training, test, training_rates
 end
 
+function MAE(rates_base, rates_training, rates_test)
+  user_rates = rates_base - rates_training
+  predicted_rates = rates_test - rates_training
+
+  user_mean_predict = []
+
+  counter = 0
+
+  for i in 1:USERS_NUMBER
+    rates_position = find(r->r!=0.0, user_rates[i, :])
+
+    if length(user_rates[rates_position]) != 0.0 && length(predicted_rates[rates_position]) != 0.0
+      push!(user_mean_predict, mean(abs(user_rates[rates_position] .- predicted_rates[rates_position])))
+    else
+      push!(user_mean_predict, 0)
+    end
+  end
+
+  prediction_means = mean(user_mean_predict)
+
+  return prediction_means
+end
+
 f = open(file_dir)
 
 file_content = readdlm(f)
@@ -231,15 +236,21 @@ println()
 println("Count Global Mean Zero: $(length(find(r->r==0, items_global_mean)))")
 println()
 print("Time User Rates Predict: ")
-@time predict_test(users_rates_test, test, 10, users_rates_training, similarity, items_global_mean)
+@time predict_test(users_rates_test, test, 15, users_rates_training, similarity, items_global_mean)
 println()
 println("User Rates Final: $(length(find(r->r!=0, users_rates_test)))")
+println()
+@time println(MAE(users_rates, users_rates_training, users_rates_test))
 println()
 println()
 println("Global Mean Used: $(g_mean)")
 println("Global Mean Zero: $(g_mean_zero)")
 println("Predicted Rates: $(predictions)")
 println("Predicted Zero: $(predict_zero)")
+@time writedlm("test.data", users_rates_test)
+@time writedlm("training.data", users_rates_training)
+@time writedlm("base.data", users_rates)
+
 
 # predict_test(rates_test, test, K, rates_training, similarity, items_global_means)
 #@time predict_test(users_rates, users_rates_training, test)
