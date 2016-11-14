@@ -72,21 +72,17 @@ function similarity_table(rates_table, similarity_func, users_number)
 end
 
 function knn(K, vector)
-  top = []
+  neighbors = []
 
-  println("-----KNN COPY-----")
-  @time vector_aux = copy(vector)
-  println("-----KNN COPY-----")
+  vector_aux = copy(vector)
 
   for i in 1:K
     index_change = find(r->r==maximum(vector_aux), vector_aux)
     vector_aux[index_change] = 0
-    push!(top, index_change)
+    push!(neighbors, index_change)
   end
 
-  println(top)
-
-  return top
+  return neighbors
 end
 
 function item_rated(user, similar_user, item, rates)
@@ -99,6 +95,11 @@ function item_rated(user, similar_user, item, rates)
   return false
 end
 
+global predictions = 0
+global g_mean = 0
+global predict_zero = 0
+global g_mean_zero = 0
+
 function user_based_prediction(K, rates, similarity, user, item, items_global_means)
   most_similar_list = knn(K+1, similarity[:, user])[2:end]
 
@@ -107,60 +108,79 @@ function user_based_prediction(K, rates, similarity, user, item, items_global_me
   num = 0
   den = 0
 
-  println("\n\n")
-  println("-----START PREDICTION-----")
+  # println("\n\n")
+  # println("-----START PREDICTION-----")
 
-  max_neighbours = round(K/2, RoundUp)
+  max_neighbours = 3
 
-  println("Max Neighbours $(max_neighbours)")
+  # println("Max Neighbours $(max_neighbours)")
 
   for i in most_similar_list
     if max_neighbours > 0
       if item_rated(user, i[1], item, rates)
 
-        println()
-        println("\[$(i[1])\] => Similarity: $(similarity[user, i[1]])")
-        println("\[$(i[1])\] => Item Rate: $(rates[i[1], item])")
+        # println()
+        # println("\[$(i[1])\] => Similarity: $(similarity[user, i[1]])")
+        # println("\[$(i[1])\] => Item Rate: $(rates[i[1], item])")
 
         num += similarity[user, i[1]] * rates[i[1], item]
         den += similarity[user, i[1]]
 
         max_neighbours -= 1
-
-        println()
-        println("Current Numerator $(num)")
-        println("Current Denominator $(den)")
-        println("Current Neighbours $(max_neighbours)")
+        #
+        # println()
+        # println("Current Numerator $(num)")
+        # println("Current Denominator $(den)")
+        # println("Current Neighbours $(max_neighbours)")
       end
     end
   end
 
-  println()
-
   if max_neighbours > 0
     rates = items_global_means[item]
-    println("Global Mean")
+    global g_mean += 1
+
+    if rates == 0
+      global g_mean_zero += 1
+    end
   else
-    rates = num/dem
-    println("Prediction")
+    rates = num/den
+    global predictions += 1
+
+    if rates == 0
+      global predict_zero += 1
+    end
   end
 
-  println("Item Global Mean $(items_global_means[item])")
-  println("Rate Predicted $(num/den)")
-
-  println("-----END PREDICTION-----")
-  println("\n\n")
+  # println("Item Global Mean $(items_global_means[item])")
+  # println("Rate Predicted $(num/den)")
+  #
+  # println("-----END PREDICTION-----")
+  # println("\n\n")
 
   return rates
 end
 
-function predict_test(rates_base, rates_test, test)
+function predict_test(rates_test, test, K, rates_training, similarity, items_global_means)
   (rows, columns) = size(rates_test)
 
+  count = 0
+  error = 0
+
   for i in test
-    user_row = round(i/rows, RoundDown) + 1
-    user_column = round(i/columns, RoundDown) + 1
+    item = convert(Int64, round(i[1]/rows, RoundUp))
+    user = i[1]%rows != 0 ? i[1]%rows : rows
+
+    rates_test[user, item] = user_based_prediction(K, rates_training, similarity, user, item, items_global_means)
+
+    count += 1
+
+    if rates_test[user, item] == 0
+      erro += 1
+    end
   end
+  println("Count: $(count)")
+  println("Zeros: $(error)")
 end
 
 function set_training(users_rates)
@@ -193,13 +213,36 @@ close(f)
 
 # println(size(file_content))
 # println(size(users_rates_training))
+print("Time User Rates: ")
 @time users_rates = rates_matrix(file_content, USERS_NUMBER, ITENS_NUMBER)
+println()
+print("Time User Rates Training: ")
 @time (training, test, users_rates_training) = set_training(users_rates)
+println()
+print("Time User Rates Test: ")
+@time users_rates_test = copy(users_rates_training)
+println()
+# print("Time Similarity Table: ")
+# @time similarity = similarity_table(users_rates_training, cosine_similarity, USERS_NUMBER)
+# println()
+# print("Time Items Global Mean: ")
+# @time items_global_mean = item_global_means(users_rates_training)
+# println()
+# println("Count Global Mean Zero: $(length(find(r->r==0, items_global_mean)))")
+# println()
+# print("Time User Rates Predict: ")
+# @time predict_test(users_rates_test, test, 10, users_rates_training, similarity, items_global_mean)
+# println()
+# println("User Rates Final: $(length(find(r->r!=0, users_rates_test)))")
+# println()
+# println()
+# println("Global Mean Used: $(g_mean)")
+# println("Global Mean Zero: $(g_mean_zero)")
+# println("Predicted Rates: $(predictions)")
+# println("Predicted Zero: $(predict_zero)")
 
-@time similarity = similarity_table(users_rates_training, cosine_similarity, USERS_NUMBER)
-@time items_global_mean = item_global_means(users_rates_training)
-
-@time user_based_prediction(10, users_rates_training, similarity, 1, 251, items_global_mean)
+# predict_test(rates_test, test, K, rates_training, similarity, items_global_means)
+#@time predict_test(users_rates, users_rates_training, test)
 #writedlm("similarity.data", similarity)
 #println(items_global_mean)
 #println(length(similarity))
